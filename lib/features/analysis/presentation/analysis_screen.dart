@@ -85,6 +85,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               currentPhase: exerciseState.currentPhase,
               phaseLabel: exerciseState.phaseLabel,
               scaleAnim: _countScaleAnim,
+              exerciseType: exerciseState.exerciseType,
             ),
             const SizedBox(height: 16),
 
@@ -97,7 +98,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             const SizedBox(height: 16),
 
             // 关节角度仪表盘
-            _AngleDashboard(frameAngles: frameAngles),
+            _AngleDashboard(frameAngles: frameAngles, exerciseType: exerciseState.exerciseType),
             const SizedBox(height: 16),
 
             // 控制按钮
@@ -152,9 +153,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       final repo = ref.read(workoutRepositoryProvider);
       await repo.saveSession(session);
       if (mounted) {
+        final exerciseName = _getExerciseName(exerciseState.exerciseType);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已保存 ${exerciseState.repCount} 次深蹲记录'),
+            content: Text('已保存 ${exerciseState.repCount} 次$exerciseName记录'),
             backgroundColor: AppColors.accent,
           ),
         );
@@ -176,13 +178,26 @@ class _CounterCard extends StatelessWidget {
   final String currentPhase;
   final String phaseLabel;
   final Animation<double> scaleAnim;
+  final String exerciseType;
 
   const _CounterCard({
     required this.repCount,
     required this.currentPhase,
     required this.phaseLabel,
     required this.scaleAnim,
+    required this.exerciseType,
   });
+
+  String _getExerciseLabel(String type) {
+    switch (type) {
+      case 'squat':
+        return '深蹲次数';
+      case 'pushup':
+        return '俯卧撑次数';
+      default:
+        return '动作次数';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -210,9 +225,9 @@ class _CounterCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Text(
-            '深蹲次数',
-            style: TextStyle(
+          Text(
+            _getExerciseLabel(exerciseType),
+            style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 14,
               fontWeight: FontWeight.w500,
@@ -251,10 +266,13 @@ class _PhaseIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (currentPhase.toLowerCase()) {
+      // 深蹲阶段
       'standing' => ('站立', AppColors.textSecondary),
       'descending' => ('下蹲中↓', AppColors.warning),
       'bottom' => ('底部', AppColors.accent),
       'ascending' => ('起身中↑', AppColors.accent),
+      // 俯卧撑阶段
+      'up' => ('上升态', AppColors.textSecondary),
       _ => (phaseLabel, AppColors.textSecondary),
     };
 
@@ -352,7 +370,29 @@ class _FeedbackCard extends StatelessWidget {
 /// 角度仪表盘
 class _AngleDashboard extends StatelessWidget {
   final FrameAngles frameAngles;
-  const _AngleDashboard({required this.frameAngles});
+  final String exerciseType;
+  const _AngleDashboard({required this.frameAngles, required this.exerciseType});
+
+  List<Widget> _buildJoints(BuildContext context) {
+    // 根据动作类型显示不同的关节
+    if (exerciseType == 'pushup') {
+      // 俯卧撑：显示肘部和肩部
+      return [
+        _buildArcItem('左肘', frameAngles.getAngleValue(JointAngleType.leftElbow)),
+        _buildArcItem('右肘', frameAngles.getAngleValue(JointAngleType.rightElbow)),
+        _buildArcItem('左肩', frameAngles.getAngleValue(JointAngleType.leftShoulder)),
+        _buildArcItem('右肩', frameAngles.getAngleValue(JointAngleType.rightShoulder)),
+      ];
+    } else {
+      // 默认/深蹲：显示膝部和髋部
+      return [
+        _buildArcItem('左膝', frameAngles.getAngleValue(JointAngleType.leftKnee)),
+        _buildArcItem('右膝', frameAngles.getAngleValue(JointAngleType.rightKnee)),
+        _buildArcItem('左髋', frameAngles.getAngleValue(JointAngleType.leftHip)),
+        _buildArcItem('右髋', frameAngles.getAngleValue(JointAngleType.rightHip)),
+      ];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -380,16 +420,7 @@ class _AngleDashboard extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildArcItem('左膝',
-                  frameAngles.getAngleValue(JointAngleType.leftKnee)),
-              _buildArcItem('右膝',
-                  frameAngles.getAngleValue(JointAngleType.rightKnee)),
-              _buildArcItem(
-                  '左髋', frameAngles.getAngleValue(JointAngleType.leftHip)),
-              _buildArcItem(
-                  '右髋', frameAngles.getAngleValue(JointAngleType.rightHip)),
-            ],
+            children: _buildJoints(context),
           ),
         ],
       ),

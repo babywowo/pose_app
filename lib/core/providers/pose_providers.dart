@@ -382,8 +382,11 @@ class PipelineController {
 
   /// 切换动作类型（未来扩展）
   Future<void> switchExercise(String exerciseType) async {
-    // 先停止分析
-    if (_ref.read(isAnalyzingProvider)) {
+    // 记录当前分析状态
+    final wasAnalyzing = _ref.read(isAnalyzingProvider);
+
+    // 先停止分析（如果正在分析）
+    if (wasAnalyzing) {
       await toggleAnalysis();
     }
 
@@ -391,7 +394,7 @@ class PipelineController {
     _ref.read(selectedExerciseProvider.notifier).state = exerciseType;
 
     // 如果之前在分析，自动重新开始
-    if (_ref.read(isAnalyzingProvider)) {
+    if (wasAnalyzing) {
       await toggleAnalysis();
     }
   }

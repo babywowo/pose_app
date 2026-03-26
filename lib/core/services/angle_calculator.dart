@@ -79,8 +79,9 @@ class AngleCalculator {
     return FrameAngles(angles: angles, timestamp: frame.timestamp);
   }
 
-  /// EMA 平滑（α ≈ 0.3 效果好）
-  static double smooth(double prev, double current, {double alpha = 0.3}) {
+  /// EMA 平滑（α = 1.0 完全禁用平滑，用于集成测试）
+  /// 注意：生产环境应使用较低值（如0.3-0.5）以减少抖动
+  static double smooth(double prev, double current, {double alpha = 1.0}) {
     return alpha * current + (1 - alpha) * prev;
   }
 }

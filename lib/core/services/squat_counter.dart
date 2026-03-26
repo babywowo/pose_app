@@ -2,6 +2,7 @@ import 'package:pose_app/core/models/angle_result.dart';
 import 'package:pose_app/core/models/workout_session.dart';
 
 /// 深蹲动作阶段
+@Deprecated('已被ExerciseState.currentPhase替代')
 enum SquatPhase {
   standing, // 站立（膝角 > 160°）
   descending, // 下蹲中
@@ -10,6 +11,7 @@ enum SquatPhase {
 }
 
 /// 深蹲计数状态快照
+@Deprecated('已被ExerciseState替代')
 class SquatCounterState {
   final int repCount;
   final SquatPhase phase;
@@ -38,6 +40,15 @@ class SquatCounterState {
 }
 
 /// 深蹲计数器
+///
+/// @deprecated 已被SquatAnalyzer替代。SquatAnalyzer使用通用ExerciseAnalyzer接口，
+/// 支持YAML配置和状态机引擎，更易于扩展和维护。
+///
+/// 迁移指南：
+/// 1. 使用SquatAnalyzer替代SquatCounter
+/// 2. 使用ExerciseState替代SquatCounterState
+/// 3. 使用exerciseStateProvider替代squatStateProvider
+@Deprecated('已被SquatAnalyzer替代')
 class SquatCounter {
   // 阈值参数
   static const double _standThreshold = 160.0; // 大于此角度 = 站立
@@ -157,6 +168,7 @@ class SquatCounter {
         final remaining = (angle - _squatThreshold).toStringAsFixed(0);
         return '继续下蹲 ($remaining° 到底部)';
       case SquatPhase.bottom:
+        // 根据是否达标返回不同的反馈消息
         return isGoodForm ? '✓ 深度到位！' : '再深一点 (目标 ≤ 90°)';
       case SquatPhase.ascending:
         return '起身中…';

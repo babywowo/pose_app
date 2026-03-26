@@ -64,23 +64,28 @@ class DebugOverlay extends ConsumerWidget {
         color: stats.isAnalyzing ? Colors.greenAccent : Colors.grey,
       ),
       _DebugRow(
-        label: 'PHASE',
-        value: stats.squatPhase,
-        color: stats.squatPhase == 'BOT' ? Colors.greenAccent : Colors.white70,
-      ),
-      _DebugRow(
-        label: 'MIN',
-        value: stats.minAngle?.toStringAsFixed(0) ?? '--',
+        label: 'EXERCISE',
+        value: stats.exerciseType,
         color: Colors.white70,
       ),
       _DebugRow(
+        label: 'PHASE',
+        value: stats.currentPhase,
+        color: stats.currentPhase == 'bottom' ? Colors.greenAccent : Colors.white70,
+      ),
+      _DebugRow(
+        label: 'REPS',
+        value: '${stats.repCount}',
+        color: stats.repCount > 0 ? Colors.greenAccent : Colors.white70,
+      ),
+      _DebugRow(
         label: 'L-KNEE',
-        value: stats.leftKnee?.toStringAsFixed(0) ?? '--',
+        value: stats.keyAngles['leftKnee']?.toStringAsFixed(0) ?? '--',
         color: Colors.white70,
       ),
       _DebugRow(
         label: 'R-KNEE',
-        value: stats.rightKnee?.toStringAsFixed(0) ?? '--',
+        value: stats.keyAngles['rightKnee']?.toStringAsFixed(0) ?? '--',
         color: Colors.white70,
       ),
     ];

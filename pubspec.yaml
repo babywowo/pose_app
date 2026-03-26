@@ -54,12 +54,14 @@ dependencies:
 
   # --- 工具 ---
   path_provider: ^2.1.5
+  yaml: ^3.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
+  mocktail: ^1.0.4  # 无代码生成的mock框架
 
   # --- 代码生成（Riverpod + Hive）---
   riverpod_generator: ^2.6.3
@@ -80,9 +82,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/exercises/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

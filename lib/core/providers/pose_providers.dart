@@ -4,10 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pose_app/core/models/angle_result.dart';
 import 'package:pose_app/core/models/pose_landmark.dart';
+import 'package:pose_app/core/models/exercise_state.dart';
 import 'package:pose_app/core/services/angle_calculator.dart';
 import 'package:pose_app/core/services/camera_service.dart';
 import 'package:pose_app/core/services/pose_detector_service.dart';
 import 'package:pose_app/core/services/squat_counter.dart';
+import 'package:pose_app/core/services/exercise_analyzer.dart';
+import 'package:pose_app/core/services/squat_analyzer.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 摄像头 Provider
@@ -42,11 +45,17 @@ final frameAnglesProvider = StateProvider<FrameAngles>((ref) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// 深蹲计数器实例（保持状态）
+/// @deprecated 使用 exerciseAnalyzerProvider 替代
+/// 迁移指南：使用 exerciseAnalyzerProvider 获取通用分析器实例
+@Deprecated('使用 exerciseAnalyzerProvider 替代')
 final squatCounterProvider = Provider<SquatCounter>((ref) {
   return SquatCounter();
 });
 
 /// 深蹲计数状态
+/// @deprecated 使用 exerciseStateProvider 替代
+/// 迁移指南：使用 exerciseStateProvider 获取通用动作状态
+@Deprecated('使用 exerciseStateProvider 替代')
 final squatStateProvider = StateProvider<SquatCounterState>((ref) {
   return SquatCounterState.initial;
 });
@@ -55,13 +64,52 @@ final squatStateProvider = StateProvider<SquatCounterState>((ref) {
 final isAnalyzingProvider = StateProvider<bool>((ref) => false);
 
 // ──────────────────────────────────────────────────────────────────────────────
+// 通用动作分析 Provider
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// 当前激活的动作分析器（通用）
+final exerciseAnalyzerProvider = StateProvider<ExerciseAnalyzer?>((ref) => null);
+
+/// 当前动作状态（通用）
+final exerciseStateProvider = StateProvider<ExerciseState>((ref) =>
+  ExerciseState.initial(exerciseType: 'none'),
+);
+
+/// 动作类型选择器（目前只支持深蹲）
+final selectedExerciseProvider = StateProvider<String>((ref) => 'squat');
+
+/// 动作注册表：动作ID → 分析器工厂
+final exerciseRegistryProvider = Provider<Map<String, ExerciseAnalyzerFactory>>((ref) {
+  return {
+    'squat': () async {
+      final analyzer = await SquatAnalyzer.create();
+      return analyzer as ExerciseAnalyzer;
+    },
+    // 'pushup': PushupAnalyzer.create,  // 未来扩展
+  };
+});
+
+/// 根据选择创建分析器（异步）
+final createAnalyzerProvider = FutureProvider<ExerciseAnalyzer>((ref) async {
+  final exerciseType = ref.watch(selectedExerciseProvider);
+  final registry = ref.watch(exerciseRegistryProvider);
+  final factory = registry[exerciseType];
+
+  if (factory == null) {
+    throw ArgumentError('Unknown exercise type: $exerciseType');
+  }
+
+  return factory();
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
 // 调试状态 Provider（生产环境可关闭）
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// 调试面板开关
 final debugOverlayEnabledProvider = StateProvider<bool>((ref) => true);
 
-/// 调试统计数据
+/// 调试统计数据（通用化）
 class DebugStats {
   final int frameCount;       // 收到的摄像头帧总数
   final int inferenceCount;   // ML Kit 完成推理次数
@@ -70,11 +118,23 @@ class DebugStats {
   final String lastError;     // 最后一条错误
   final double fps;           // 近似帧率
   final int imageFormat;      // 摄像头帧格式 raw 值（35=YUV_420_888）
-  final bool isAnalyzing;     // 深蹲分析是否开启
-  final double? leftKnee;     // 左膝角度（调试用）
-  final double? rightKnee;    // 右膝角度（调试用）
-  final String squatPhase;    // 深蹲阶段（STAND/DESC/BOT/ASC）
-  final double? minAngle;     // 本次下蹲最小角度（调试用）
+  final bool isAnalyzing;     // 动作分析是否开启
+
+  // 通用字段（替代深蹲专属）
+  final String exerciseType;      // 'squat', 'pushup'...
+  final String currentPhase;      // 'standing', 'bottom'...
+  final int repCount;             // 当前计数
+  final Map<String, double> keyAngles;  // 关键角度值
+
+  // 旧版字段（向后兼容，标记为废弃）
+  @Deprecated('Use currentPhase instead')
+  final String squatPhase;
+  @Deprecated('Use keyAngles instead')
+  final double? leftKnee;
+  @Deprecated('Use keyAngles instead')
+  final double? rightKnee;
+  @Deprecated('Use keyMetrics instead')
+  final double? minAngle;
 
   const DebugStats({
     this.frameCount = 0,
@@ -85,9 +145,13 @@ class DebugStats {
     this.fps = 0,
     this.imageFormat = 0,
     this.isAnalyzing = false,
+    this.exerciseType = '-',
+    this.currentPhase = '-',
+    this.repCount = 0,
+    this.keyAngles = const {},
+    this.squatPhase = '-',
     this.leftKnee,
     this.rightKnee,
-    this.squatPhase = '-',
     this.minAngle,
   });
 
@@ -100,10 +164,10 @@ class DebugStats {
     double? fps,
     int? imageFormat,
     bool? isAnalyzing,
-    double? leftKnee,
-    double? rightKnee,
-    String? squatPhase,
-    double? minAngle,
+    String? exerciseType,
+    String? currentPhase,
+    int? repCount,
+    Map<String, double>? keyAngles,
   }) {
     return DebugStats(
       frameCount: frameCount ?? this.frameCount,
@@ -114,10 +178,10 @@ class DebugStats {
       fps: fps ?? this.fps,
       imageFormat: imageFormat ?? this.imageFormat,
       isAnalyzing: isAnalyzing ?? this.isAnalyzing,
-      leftKnee: leftKnee ?? this.leftKnee,
-      rightKnee: rightKnee ?? this.rightKnee,
-      squatPhase: squatPhase ?? this.squatPhase,
-      minAngle: minAngle ?? this.minAngle,
+      exerciseType: exerciseType ?? this.exerciseType,
+      currentPhase: currentPhase ?? this.currentPhase,
+      repCount: repCount ?? this.repCount,
+      keyAngles: keyAngles ?? this.keyAngles,
     );
   }
 }
@@ -145,7 +209,9 @@ class PipelineController {
   CameraNotifier get _cameraSvc => _ref.read(cameraNotifierProvider.notifier);
   PoseDetectorService get _poseService =>
       _ref.read(poseDetectorServiceProvider);
-  SquatCounter get _squatCounter => _ref.read(squatCounterProvider);
+
+  /// 获取当前动作分析器
+  ExerciseAnalyzer? get _analyzer => _ref.read(exerciseAnalyzerProvider);
 
   /// 初始化摄像头
   Future<void> initCamera() async {
@@ -175,47 +241,32 @@ class PipelineController {
         final angles = _angleCalc.calculate(frame);
         _ref.read(frameAnglesProvider.notifier).state = angles;
 
-        // 更新膝角到调试面板
+        // 通用分析流程
         final analyzing = _ref.read(isAnalyzingProvider);
-        final leftKnee = angles.getAngleValue(JointAngleType.leftKnee);
-        final rightKnee = angles.getAngleValue(JointAngleType.rightKnee);
+        final analyzer = _analyzer;
+
         final oldStats = _ref.read(debugStatsProvider);
+        final keyAngles = analyzer?.getKeyAngles(angles) ?? {};
 
-        if (analyzing) {
-          final squatState = _squatCounter.update(angles);
-          _ref.read(squatStateProvider.notifier).state = squatState;
+        if (analyzing && analyzer != null) {
+          final state = analyzer.update(angles);
+          _ref.read(exerciseStateProvider.notifier).state = state;
 
-          // 将深蹲阶段和最小角度同步到调试面板
-          String phaseStr = '-';
-          switch (squatState.phase) {
-            case SquatPhase.standing:
-              phaseStr = 'STAND';
-              break;
-            case SquatPhase.descending:
-              phaseStr = 'DESC';
-              break;
-            case SquatPhase.bottom:
-              phaseStr = 'BOT';
-              break;
-            case SquatPhase.ascending:
-              phaseStr = 'ASC';
-              break;
-          }
-
+          // 更新调试面板
           _ref.read(debugStatsProvider.notifier).state = oldStats.copyWith(
             isAnalyzing: analyzing,
-            leftKnee: leftKnee,
-            rightKnee: rightKnee,
-            squatPhase: phaseStr,
-            minAngle: (squatState.leftKneeAngle + squatState.rightKneeAngle) / 2,
+            exerciseType: state.exerciseType,
+            currentPhase: state.currentPhase,
+            repCount: state.repCount,
+            keyAngles: keyAngles,
           );
         } else {
           _ref.read(debugStatsProvider.notifier).state = oldStats.copyWith(
             isAnalyzing: analyzing,
-            leftKnee: leftKnee,
-            rightKnee: rightKnee,
-            squatPhase: '-',
-            minAngle: null,
+            exerciseType: '-',
+            currentPhase: '-',
+            repCount: 0,
+            keyAngles: keyAngles,
           );
         }
       }
@@ -304,20 +355,41 @@ class PipelineController {
     }
   }
 
-  /// 开始/停止分析（深蹲计数）
-  void toggleAnalysis() {
+  /// 开始/停止分析
+  Future<void> toggleAnalysis() async {
     final current = _ref.read(isAnalyzingProvider);
     if (!current) {
-      _squatCounter.reset();
-      _ref.read(squatStateProvider.notifier).state = SquatCounterState.initial;
+      // 创建分析器
+      final analyzer = await _ref.read(createAnalyzerProvider.future);
+      analyzer.reset();
+      _ref.read(exerciseAnalyzerProvider.notifier).state = analyzer;
+      _ref.read(exerciseStateProvider.notifier).state = analyzer.currentState;
     }
     _ref.read(isAnalyzingProvider.notifier).state = !current;
   }
 
   /// 重置计数
   void resetCount() {
-    _squatCounter.reset();
-    _ref.read(squatStateProvider.notifier).state = SquatCounterState.initial;
+    final analyzer = _analyzer;
+    analyzer?.reset();
+    _ref.read(exerciseStateProvider.notifier).state = analyzer?.currentState ??
+      ExerciseState.initial(exerciseType: 'none');
+  }
+
+  /// 切换动作类型（未来扩展）
+  Future<void> switchExercise(String exerciseType) async {
+    // 先停止分析
+    if (_ref.read(isAnalyzingProvider)) {
+      await toggleAnalysis();
+    }
+
+    // 切换类型
+    _ref.read(selectedExerciseProvider.notifier).state = exerciseType;
+
+    // 如果之前在分析，自动重新开始
+    if (_ref.read(isAnalyzingProvider)) {
+      await toggleAnalysis();
+    }
   }
 
   Future<void> dispose() async {

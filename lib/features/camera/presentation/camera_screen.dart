@@ -310,7 +310,7 @@ class _StartAnalysisButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAnalyzing = ref.watch(isAnalyzingProvider);
-    final squatState = ref.watch(squatStateProvider);
+    final exerciseState = ref.watch(exerciseStateProvider);
 
     return Row(
       children: [
@@ -327,7 +327,7 @@ class _StartAnalysisButton extends ConsumerWidget {
             ),
             label: Text(
               isAnalyzing
-                  ? '停止分析  ·  ${squatState.repCount} 次'
+                  ? '停止分析  ·  ${exerciseState.repCount} 次'
                   : '开始深蹲分析',
             ),
             style: ElevatedButton.styleFrom(

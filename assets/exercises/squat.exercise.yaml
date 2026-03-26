@@ -1,0 +1,125 @@
+id: squat
+name: 深蹲
+description: 标准深蹲动作检测与计数
+
+# 关注的关节（AngleCalculator 会优先计算这些）
+required_joints:
+  - leftKnee
+  - rightKnee
+
+# 姿态检测层次配置
+detection_layers:
+  # 第一层：触发机制（当前实现）
+  trigger:
+    enabled: true
+    config:
+      ema_alpha: 1.0  # 1.0 = 无平滑（集成测试），0.3-0.5 = 中等平滑（生产环境）
+      
+  # 第二层：稳定性检测（预留接口，暂未启用）
+  stability:
+    enabled: false
+    config:
+      min_duration_ms: 500    # 需要保持至少500ms
+      tolerance: 5            # 允许±5°的波动
+      window_size: 30         # 检查过去30帧
+      
+  # 第三层：过渡平滑（预留接口，暂未启用）
+  transition:
+    enabled: false
+    config:
+      smoothness_threshold: 10  # 每帧变化不超过10°
+      evaluation_window: 20     # 评估过渡前后的20帧
+
+# 动作阶段定义
+phases:
+  - id: standing
+    label: 站立
+    feedback: 站立准备，开始下蹲
+
+  - id: descending
+    label: 下蹲中
+    feedback: 继续下蹲
+
+  - id: bottom
+    label: 最低点
+    feedback: 深度到位！
+    conditions:  # 可选：进入该阶段的条件
+      - joint: leftKnee
+        aggregation: avg
+        operator: between
+        min: 60
+        max: 100
+
+  - id: ascending
+    label: 起身中
+    feedback: 起身中…
+
+# 状态转换规则（参考老SquatCounter的灵活设计）
+transitions:
+  - from: standing
+    to: descending
+    should_count_rep: false
+    triggers:
+      - joint: leftKnee
+        aggregation: avg
+        operator: "<"
+        max: 150
+
+  - from: descending
+    to: bottom
+    should_count_rep: false
+    triggers:
+      - joint: leftKnee
+        aggregation: avg
+        operator: "<"
+        max: 100
+
+  # bottom->ascending: 转换到起身阶段（不计数）
+  - from: bottom
+    to: ascending
+    should_count_rep: false
+    triggers:
+      - joint: leftKnee
+        aggregation: avg
+        operator: ">"
+        min: 100
+
+  # ascending->standing: 从起身阶段到站立（计数）
+  - from: ascending
+    to: standing
+    should_count_rep: true
+    on_rep_feedback: 完成1次深蹲！
+    triggers:
+      - joint: leftKnee
+        aggregation: avg
+        operator: ">"
+        min: 160
+
+  # bottom->standing: 快速起身直接从底部到站立（计数）
+  - from: bottom
+    to: standing
+    should_count_rep: true
+    on_rep_feedback: 完成1次深蹲！
+    triggers:
+      - joint: leftKnee
+        aggregation: avg
+        operator: ">"
+        min: 160
+
+  # descending->standing: 下蹲中途起身（不计数）
+  - from: descending
+    to: standing
+    should_count_rep: false
+    triggers:
+      - joint: leftKnee
+        aggregation: avg
+        operator: ">"
+        min: 160
+
+# 质量评估规则
+quality_rule:
+  primary_joint: leftKnee
+  good_threshold: 90
+  good_feedback: ✓ 达标深蹲
+  bad_feedback: 再深一点（目标≤90°）
+  quality_type: lessThanOrEqual

@@ -1,10 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pose_app/core/models/angle_result.dart';
+import 'package:pose_app/core/models/exercise_state.dart';
 import 'package:pose_app/core/models/workout_session.dart';
 import 'package:pose_app/core/providers/pose_providers.dart';
 import 'package:pose_app/core/repositories/workout_repository.dart';
-import 'package:pose_app/core/services/squat_counter.dart';
 import 'package:pose_app/core/theme/app_theme.dart';
 import 'package:pose_app/features/camera/widgets/pose_overlay_painter.dart';
 
@@ -20,6 +21,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   late AnimationController _countAnimController;
   late Animation<double> _countScaleAnim;
   int _lastRepCount = 0;
+  bool _showDebugComparison = false;
 
   @override
   void initState() {
@@ -41,13 +43,13 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
   @override
   Widget build(BuildContext context) {
-    final squatState = ref.watch(squatStateProvider);
+    final exerciseState = ref.watch(exerciseStateProvider);
     final isAnalyzing = ref.watch(isAnalyzingProvider);
     final frameAngles = ref.watch(frameAnglesProvider);
 
     // 计数增加时触发弹跳动画
-    if (squatState.repCount > _lastRepCount) {
-      _lastRepCount = squatState.repCount;
+    if (exerciseState.repCount > _lastRepCount) {
+      _lastRepCount = exerciseState.repCount;
       _countAnimController.forward(from: 0);
     }
 
@@ -70,16 +72,18 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           children: [
             // 大计数器卡片
             _CounterCard(
-              repCount: squatState.repCount,
-              phase: squatState.phase,
+              repCount: exerciseState.repCount,
+              currentPhase: exerciseState.currentPhase,
+              phaseLabel: exerciseState.phaseLabel,
               scaleAnim: _countScaleAnim,
             ),
             const SizedBox(height: 16),
 
             // 反馈卡
             _FeedbackCard(
-              state: squatState,
+              state: exerciseState,
               isAnalyzing: isAnalyzing,
+              phaseLabel: exerciseState.phaseLabel,
             ),
             const SizedBox(height: 16),
 
@@ -97,27 +101,41 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   }
 
   Future<void> _saveSession() async {
-    final squatState = ref.read(squatStateProvider);
-    final counter = ref.read(squatCounterProvider);
+    final exerciseState = ref.read(exerciseStateProvider);
+    final analyzer = ref.read(exerciseAnalyzerProvider);
 
-    if (squatState.repCount == 0) {
+    if (exerciseState.repCount == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('没有可保存的记录')),
       );
       return;
     }
 
+    if (analyzer == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('分析器未初始化')),
+      );
+      return;
+    }
+
     final session = WorkoutSession.start()
-      ..totalReps = squatState.repCount
-      ..reps = counter.reps.toList()
-      ..goodFormReps = counter.reps.where((r) => r.isGoodForm).length
+      ..totalReps = exerciseState.repCount
+      ..reps = analyzer.getCompletedReps()
+          .map((rep) => SquatRep(
+                minKneeAngle: rep.metrics['minKneeAngle'] ?? 180,
+                maxKneeAngle: rep.metrics['maxKneeAngle'] ?? 0,
+                isGoodForm: rep.metrics['isGoodForm'] == 1.0,
+                timestamp: rep.timestamp,
+              ))
+          .toList()
+      ..goodFormReps = analyzer.getCompletedReps().where((r) => r.metrics['isGoodForm'] == 1.0).length
       ..endTime = DateTime.now();
 
     if (session.totalReps > 0) {
-      final avgAngle = counter.reps.isEmpty
+      final avgAngle = session.reps.isEmpty
           ? 0.0
-          : counter.reps.map((r) => r.minKneeAngle).reduce((a, b) => a + b) /
-              counter.reps.length;
+          : session.reps.map((r) => r.minKneeAngle).reduce((a, b) => a + b) /
+              session.reps.length;
       session.avgKneeAngle = avgAngle;
     }
 
@@ -127,7 +145,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已保存 ${squatState.repCount} 次深蹲记录'),
+            content: Text('已保存 ${exerciseState.repCount} 次深蹲记录'),
             backgroundColor: AppColors.accent,
           ),
         );
@@ -146,12 +164,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 /// 大计数器卡片
 class _CounterCard extends StatelessWidget {
   final int repCount;
-  final SquatPhase phase;
+  final String currentPhase;
+  final String phaseLabel;
   final Animation<double> scaleAnim;
 
   const _CounterCard({
     required this.repCount,
-    required this.phase,
+    required this.currentPhase,
+    required this.phaseLabel,
     required this.scaleAnim,
   });
 
@@ -204,7 +224,7 @@ class _CounterCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _PhaseIndicator(phase: phase),
+          _PhaseIndicator(currentPhase: currentPhase, phaseLabel: phaseLabel),
         ],
       ),
     );
@@ -212,16 +232,21 @@ class _CounterCard extends StatelessWidget {
 }
 
 class _PhaseIndicator extends StatelessWidget {
-  final SquatPhase phase;
-  const _PhaseIndicator({required this.phase});
+  final String currentPhase;
+  final String phaseLabel;
+  const _PhaseIndicator({
+    required this.currentPhase,
+    required this.phaseLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (phase) {
-      SquatPhase.standing => ('站立', AppColors.textSecondary),
-      SquatPhase.descending => ('下蹲中↓', AppColors.warning),
-      SquatPhase.bottom => ('底部', AppColors.accent),
-      SquatPhase.ascending => ('起身中↑', AppColors.accent),
+    final (label, color) = switch (currentPhase.toLowerCase()) {
+      'standing' => ('站立', AppColors.textSecondary),
+      'descending' => ('下蹲中↓', AppColors.warning),
+      'bottom' => ('底部', AppColors.accent),
+      'ascending' => ('起身中↑', AppColors.accent),
+      _ => (phaseLabel, AppColors.textSecondary),
     };
 
     return Container(
@@ -245,10 +270,15 @@ class _PhaseIndicator extends StatelessWidget {
 
 /// 实时反馈卡片
 class _FeedbackCard extends StatelessWidget {
-  final SquatCounterState state;
+  final ExerciseState state;
   final bool isAnalyzing;
+  final String phaseLabel;
 
-  const _FeedbackCard({required this.state, required this.isAnalyzing});
+  const _FeedbackCard({
+    required this.state,
+    required this.isAnalyzing,
+    required this.phaseLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -296,7 +326,7 @@ class _FeedbackCard extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              state.feedback,
+              state.feedback.isEmpty ? phaseLabel : state.feedback,
               style: TextStyle(
                 color: color,
                 fontSize: 15,

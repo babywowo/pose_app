@@ -24,16 +24,15 @@ void main() async {
   // 初始化 Hive
   await Hive.initFlutter();
 
+  // 初始化 WorkoutRepository（同步等待，确保后续使用时已就绪）
+  final workoutRepository = WorkoutRepository();
+  await workoutRepository.init();
+
   runApp(
     ProviderScope(
       overrides: [
-        // 预先初始化 WorkoutRepository
-        workoutRepositoryProvider.overrideWith((ref) {
-          final repo = WorkoutRepository();
-          repo.init(); // 异步，不阻塞启动
-          ref.onDispose(repo.dispose);
-          return repo;
-        }),
+        // 使用已初始化的 repository
+        workoutRepositoryProvider.overrideWithValue(workoutRepository),
       ],
       child: const PoseApp(),
     ),

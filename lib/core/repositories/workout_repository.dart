@@ -57,5 +57,10 @@ final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
 final historySessionsProvider =
     FutureProvider<List<WorkoutSession>>((ref) async {
   final repo = ref.watch(workoutRepositoryProvider);
-  return repo.getAllSessions();
+  try {
+    return repo.getAllSessions();
+  } catch (e) {
+    // 如果repository未初始化，返回空列表
+    return [];
+  }
 });

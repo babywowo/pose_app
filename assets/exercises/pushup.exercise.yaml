@@ -1,0 +1,127 @@
+id: pushup
+name: 俯卧撑
+description: 标准俯卧撑动作检测与计数
+
+# 关注的关节（肘部角度）
+required_joints:
+  - leftElbow
+  - rightElbow
+
+# 姿态检测层次配置
+detection_layers:
+  # 第一层：触发机制
+  trigger:
+    enabled: true
+    config:
+      ema_alpha: 0.5  # 生产环境推荐值，平衡平滑与响应速度
+
+  # 第二层：稳定性检测（预留接口）
+  stability:
+    enabled: false
+    config:
+      min_duration_ms: 300
+      tolerance: 5
+      window_size: 20
+
+  # 第三层：过渡平滑（预留接口）
+  transition:
+    enabled: false
+    config:
+      smoothness_threshold: 15
+      evaluation_window: 15
+
+# 动作阶段定义
+phases:
+  - id: up
+    label: 上升态
+    feedback: 准备开始俯卧撑
+
+  - id: descending
+    label: 下压中
+    feedback: 继续下压
+
+  - id: bottom
+    label: 最低点
+    feedback: 触底！
+    conditions:
+      - joint: leftElbow
+        aggregation: avg
+        operator: between
+        min: 60
+        max: 100
+
+  - id: ascending
+    label: 抬升中
+    feedback: 抬升中…
+
+# 状态转换规则
+transitions:
+  # up->descending: 开始下压
+  - from: up
+    to: descending
+    should_count_rep: false
+    triggers:
+      - joint: leftElbow
+        aggregation: avg
+        operator: "<"
+        max: 140
+
+  # descending->bottom: 到达最低点
+  - from: descending
+    to: bottom
+    should_count_rep: false
+    triggers:
+      - joint: leftElbow
+        aggregation: avg
+        operator: "<"
+        max: 100
+
+  # bottom->ascending: 开始抬升
+  - from: bottom
+    to: ascending
+    should_count_rep: false
+    triggers:
+      - joint: leftElbow
+        aggregation: avg
+        operator: ">"
+        min: 100
+
+  # ascending->up: 完成一次俯卧撑（计数）
+  - from: ascending
+    to: up
+    should_count_rep: true
+    on_rep_feedback: 完成1次俯卧撑！
+    triggers:
+      - joint: leftElbow
+        aggregation: avg
+        operator: ">"
+        min: 150
+
+  # bottom->up: 快速起身直接完成（计数）
+  - from: bottom
+    to: up
+    should_count_rep: true
+    on_rep_feedback: 完成1次俯卧撑！
+    triggers:
+      - joint: leftElbow
+        aggregation: avg
+        operator: ">"
+        min: 150
+
+  # descending->up: 中途起身（不计数）
+  - from: descending
+    to: up
+    should_count_rep: false
+    triggers:
+      - joint: leftElbow
+        aggregation: avg
+        operator: ">"
+        min: 150
+
+# 质量评估规则
+quality_rule:
+  primary_joint: leftElbow
+  good_threshold: 90
+  good_feedback: ✓ 达标俯卧撑
+  bad_feedback: 再深一点（目标≤90°）
+  quality_type: lessThanOrEqual

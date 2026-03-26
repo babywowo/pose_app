@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pose_app/core/models/angle_result.dart';
@@ -21,7 +20,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   late AnimationController _countAnimController;
   late Animation<double> _countScaleAnim;
   int _lastRepCount = 0;
-  bool _showDebugComparison = false;
 
   @override
   void initState() {
@@ -41,6 +39,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     super.dispose();
   }
 
+  String _getExerciseName(String exerciseType) {
+    switch (exerciseType) {
+      case 'squat':
+        return '深蹲';
+      case 'pushup':
+        return '俯卧撑';
+      default:
+        return '动作';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final exerciseState = ref.watch(exerciseStateProvider);
@@ -55,7 +64,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('深蹲分析'),
+        title: Text('${_getExerciseName(exerciseState.exerciseType)}分析'),
         centerTitle: true,
         actions: [
           if (isAnalyzing)

@@ -11,6 +11,7 @@ import 'package:pose_app/core/services/pose_detector_service.dart';
 import 'package:pose_app/core/services/squat_counter.dart';
 import 'package:pose_app/core/services/exercise_analyzer.dart';
 import 'package:pose_app/core/services/squat_analyzer.dart';
+import 'package:pose_app/core/services/generic_exercise_analyzer.dart';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 摄像头 Provider
@@ -85,7 +86,10 @@ final exerciseRegistryProvider = Provider<Map<String, ExerciseAnalyzerFactory>>(
       final analyzer = await SquatAnalyzer.create();
       return analyzer as ExerciseAnalyzer;
     },
-    // 'pushup': PushupAnalyzer.create,  // 未来扩展
+    'pushup': () async {
+      final analyzer = await GenericExerciseAnalyzer.create('assets/exercises/pushup.exercise.yaml');
+      return analyzer as ExerciseAnalyzer;
+    },
   };
 });
 

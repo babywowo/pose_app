@@ -139,6 +139,9 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
         ],
       ),
       actions: [
+        // 动作类型选择器
+        _buildExerciseSelector(),
+        const SizedBox(width: 8),
         // 调试开关
         IconButton(
           icon: Icon(
@@ -303,10 +306,67 @@ class _CameraScreenState extends ConsumerState<CameraScreen>
       ),
     );
   }
+
+  /// 动作类型选择器
+  Widget _buildExerciseSelector() {
+    final selectedExercise = ref.watch(selectedExerciseProvider);
+    final exerciseNames = {
+      'squat': '深蹲',
+      'pushup': '俯卧撑',
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: DropdownButton<String>(
+        value: selectedExercise,
+        iconEnabledColor: Colors.white,
+        dropdownColor: Colors.black87,
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        underline: const SizedBox.shrink(),
+        items: exerciseNames.entries.map((entry) {
+          return DropdownMenuItem<String>(
+            value: entry.key,
+            child: Row(
+              children: [
+                Icon(
+                  entry.key == 'squat' ? Icons.accessibility : Icons.fitness_center,
+                  size: 18,
+                  color: AppColors.accent,
+                ),
+                const SizedBox(width: 8),
+                Text(entry.value),
+              ],
+            ),
+          );
+        }).toList(),
+        onChanged: (value) async {
+          if (value != null && value != selectedExercise) {
+            // 切换动作类型
+            await ref.read(pipelineControllerProvider).switchExercise(value);
+          }
+        },
+      ),
+    );
+  }
 }
 
 /// 开始分析按钮（独立 ConsumerWidget 避免整体重建）
 class _StartAnalysisButton extends ConsumerWidget {
+  String _getExerciseName(String exerciseType) {
+    switch (exerciseType) {
+      case 'squat':
+        return '深蹲';
+      case 'pushup':
+        return '俯卧撑';
+      default:
+        return '动作';
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAnalyzing = ref.watch(isAnalyzingProvider);
@@ -328,7 +388,7 @@ class _StartAnalysisButton extends ConsumerWidget {
             label: Text(
               isAnalyzing
                   ? '停止分析  ·  ${exerciseState.repCount} 次'
-                  : '开始深蹲分析',
+                  : '开始${_getExerciseName(exerciseState.exerciseType)}分析',
             ),
             style: ElevatedButton.styleFrom(
               backgroundColor:

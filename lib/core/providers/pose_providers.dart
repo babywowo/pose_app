@@ -363,8 +363,16 @@ class PipelineController {
   Future<void> toggleAnalysis() async {
     final current = _ref.read(isAnalyzingProvider);
     if (!current) {
-      // 创建分析器
-      final analyzer = await _ref.read(createAnalyzerProvider.future);
+      // 创建分析器 - 直接从注册表获取，避免FutureProvider缓存问题
+      final exerciseType = _ref.read(selectedExerciseProvider);
+      final registry = _ref.read(exerciseRegistryProvider);
+      final factory = registry[exerciseType];
+
+      if (factory == null) {
+        throw ArgumentError('Unknown exercise type: $exerciseType');
+      }
+
+      final analyzer = await factory();
       analyzer.reset();
       _ref.read(exerciseAnalyzerProvider.notifier).state = analyzer;
       _ref.read(exerciseStateProvider.notifier).state = analyzer.currentState;
